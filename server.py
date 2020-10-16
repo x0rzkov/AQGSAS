@@ -1,20 +1,31 @@
-from flask import Flask, render_template, request, Response, session
+from flask import Flask, render_template, request, Response, session, jsonify
 import json
 import re
 
-from flair.embeddings import WordEmbeddings, FlairEmbeddings, DocumentPoolEmbeddings, Sentence
+from flair.data import Sentence
+from flair.embeddings import WordEmbeddings, FlairEmbeddings, DocumentPoolEmbeddings
+
 from .biunilm.question_generator import QuestionGenerator
 from .vocabulary import Vocabulary
 from transformers import pipeline
 
+import logging
+from logging.handlers import RotatingFileHandler
+
 import torch
+
+# Script arguments can include path of the config
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument('--host', type=str, default="0.0.0.0")
+arg_parser.add_argument('--port', type=str, default="6013")
+arg_parser.add_argument('--log', type=str, default="../logs/aqgas-qa.log")
+args = arg_parser.parse_args()
 
 # Some parameters
 SCORE_THRESHOLD = .6        # [0., 1.] The minimum value for an aceptable question
 WINDOW_LENGTH = 128         # Character window length
 QG_BEAM_SIZE = 3            # Beam-size used on question generation decoder
-
-# 
+ 
 # tagger = SequenceTagger.load('ner-ontonotes')
 ne = Vocabulary.from_vocab_file('vocabularies/biology.vocab').compile()
 qg = QuestionGenerator('pretrained_models/qg_model.bin', beam_size=QG_BEAM_SIZE)
@@ -26,7 +37,6 @@ document_embeddings = DocumentPoolEmbeddings([WordEmbeddings('glove'),
                                               FlairEmbeddings('news-forward')])
 
 remove_punct = re.compile(r"[\(\)\'\":?¿!¡;]")
-
 
 def answer_similarity(ans1, real):
     sent1 = Sentence(ans1)
@@ -154,3 +164,10 @@ def generate_questions():
         return json.dumps(response)
     else:
         return Response("{'a': 'b'}", status=204, mimetype='application/json')
+
+if __name__ == '__main__':
+    handler = RotatingFileHandler(args.log, maxBytes=10000, backupCount=1)
+    handler.setLevel(logging.INFO)
+    app.logger.addHandler(handler)
+    print("Starting the server")
+    app.run(host=args.host, port=args.port)
